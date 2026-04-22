@@ -4,6 +4,17 @@ A delta-neutral ETH funding-rate carry agent for [Hummingbot Condor](https://git
 
 Two Condor Routines + one agent strategy. Each tick, the agent pays sub-penny USDC to AgentPay for market signals (funding, open interest, F&G, whale activity), decides whether to enter, hold, or exit a paired spot+perp position, and logs everything to the session journal. Budget-capped per tick — the LLM can't burn your wallet.
 
+## 30-second test (no Condor needed)
+
+Before you commit to the full Condor install below, you can confirm AgentPay is reachable and the routines' data source works with a single Python call on testnet. Free, no real USDC:
+
+```bash
+pip install agentpay-x402
+python3 -c "from agentpay import faucet_wallet, Session; w = faucet_wallet(); s = Session(w, testnet=True); print(s.call('funding_rates', {'asset': 'ETH'})['result'])"
+```
+
+You should see ETH funding rates from Binance, Bybit, and OKX printed as a JSON blob. If that works, the full Condor install below will work too — the routines call the same tool, just wrapped in a scheduler.
+
 ## Quickstart
 
 ```bash
@@ -14,9 +25,10 @@ uv pip install agentpay-x402
 cp ./routines/*.py ~/condor/routines/
 cp -r ./trading_agents/funding_carry_v1 ~/condor/trading_agents/
 
-# 3. Add AgentPay secrets to ~/condor/.env
+# 3. Add AgentPay secrets to ~/condor/.env (replace <paste-your-...> with real values)
 echo "AGENTPAY_NETWORK=testnet" >> ~/condor/.env
-echo "TEST_AGENT_SECRET_KEY=S..." >> ~/condor/.env
+echo "TEST_AGENT_SECRET_KEY=<paste-your-stellar-testnet-secret>" >> ~/condor/.env
+# (Need a testnet secret? See SETUP.md step 4 for a one-liner that generates + funds one.)
 
 # 4. Start Condor and create a session in Telegram
 cd ~/condor && make run
@@ -49,6 +61,10 @@ Per tick cost: roughly $0.014 USDC. Both routines are individually budget-capped
 - **`funding_carry`** — state-aware signal. Given current `carry_position` + `carry_direction`, returns one of: `enter_long_carry`, `enter_short_carry`, `exit_long_carry`, `exit_short_carry`, `hold`, `skip`.
 
 Both are plain Python files in [`routines/`](routines/). Drop them in `~/condor/routines/`; Condor auto-discovers.
+
+### Why cross-exchange data matters here
+
+The routines lean on AgentPay tools that aggregate across venues in a single call: `funding_rates` returns Binance + Bybit + OKX, `open_interest` and `orderbook_depth` cover Binance + Bybit. Each individual Hummingbot connector only sees its own venue, so this is where AgentPay earns its keep — the agent compares all three venues at once and picks the richest carry *before* routing execution to a single-venue connector. Scraping one exchange's public API gives you one data point; paying AgentPay gives you the whole perp market for sub-penny USDC.
 
 ## Strategy
 
