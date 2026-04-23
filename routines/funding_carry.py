@@ -22,7 +22,9 @@ import logging
 import os
 
 from pydantic import BaseModel, Field
-from telegram.ext import ContextTypes
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from telegram.ext import ContextTypes
 
 from agentpay import AgentWallet, Session, BudgetExceeded
 
