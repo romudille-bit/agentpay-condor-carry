@@ -4,38 +4,50 @@ A delta-neutral ETH funding-rate carry agent for [Hummingbot Condor](https://git
 
 Two Condor Routines + one agent strategy. Each tick, the agent pays sub-penny USDC to AgentPay for market signals (funding, open interest, F&G, whale activity), decides whether to enter, hold, or exit a paired spot+perp position, and logs everything to the session journal. Budget-capped per tick — the LLM can't burn your wallet.
 
-## 30-second test (no Condor needed)
+## Three ways to try it
 
-Before you commit to the full Condor install below, you can confirm AgentPay is reachable and the routines' data source works with a single Python call on testnet. Free, no real USDC:
+### 1. 30-second test — verify AgentPay is reachable (no Condor, no Telegram)
 
 ```bash
 pip install agentpay-x402
 python3 -c "from agentpay import faucet_wallet, Session; w = faucet_wallet(); s = Session(w, testnet=True); print(s.call('funding_rates', {'asset': 'ETH'})['result'])"
 ```
 
-You should see ETH funding rates from Binance, Bybit, and OKX printed as a JSON blob. If that works, the full Condor install below will work too — the routines call the same tool, just wrapped in a scheduler.
+You should see ETH funding rates from Binance, Bybit, and OKX as a JSON blob. Free, no real USDC, no setup.
 
-## Quickstart
+### 2. Run the routines standalone — verify both routines work end-to-end (no Condor, no Telegram)
 
 ```bash
-# 1. Install Condor (https://github.com/hummingbot/condor) and the AgentPay SDK
+git clone https://github.com/romudille-bit/agentpay-condor-carry && cd agentpay-condor-carry
+pip install agentpay-x402
+export TEST_AGENT_SECRET_KEY=$(python3 -c "from agentpay import faucet_wallet; print(faucet_wallet().keypair.secret)")
+python3 tests/test_routines_standalone.py
+```
+
+This runs both `pre_trade_check` and `funding_carry` against live testnet data — $0.008 per routine, ~40s each. Output is what Condor will read verbatim. See [`docs/demo.md`](docs/demo.md) for a real snapshot with on-chain tx hashes.
+
+### 3. Full Condor integration — spin up the carry agent
+
+Condor is a Telegram-native agent framework, so this path needs a Telegram bot (30 seconds via [@BotFather](https://t.me/BotFather)). If you don't want to set that up yet, stick to steps 1 and 2 above — the routines themselves are identical.
+
+```bash
+# Install Condor (https://github.com/hummingbot/condor) and the AgentPay SDK
 uv pip install agentpay-x402
 
-# 2. Drop the routines + agent into Condor
+# Drop the routines + agent into Condor
 cp ./routines/*.py ~/condor/routines/
 cp -r ./trading_agents/funding_carry_v1 ~/condor/trading_agents/
 
-# 3. Add AgentPay secrets to ~/condor/.env (replace <paste-your-...> with real values)
+# Add AgentPay secrets to ~/condor/.env
 echo "AGENTPAY_NETWORK=testnet" >> ~/condor/.env
-echo "TEST_AGENT_SECRET_KEY=<paste-your-stellar-testnet-secret>" >> ~/condor/.env
-# (Need a testnet secret? See SETUP.md step 4 for a one-liner that generates + funds one.)
+echo "TEST_AGENT_SECRET_KEY=$(python3 -c 'from agentpay import faucet_wallet; print(faucet_wallet().keypair.secret)')" >> ~/condor/.env
 
-# 4. Start Condor and create a session in Telegram
+# Start Condor and create a session in Telegram
 cd ~/condor && make run
 # Then DM your Condor bot: /routines → run each once; /agent → funding_carry_v1 → dry_run
 ```
 
-Full install instructions, including how to generate a testnet key and what the first-tick snapshot should look like, are in [SETUP.md](SETUP.md).
+Full install instructions (Telegram bot setup, Hummingbot backend API, first-tick walkthrough) are in [SETUP.md](SETUP.md).
 
 ## What each tick does
 
@@ -49,11 +61,11 @@ Full install instructions, including how to generate a testnet key and what the 
         ↑                       ↑
         │                       │
       AgentPay               AgentPay
-  funding + whale +       funding + OI +
-  F&G + OI ($0.008)       F&G ($0.006)
+  funding + OI + F&G      funding + OI + F&G
+  + whale ($0.008)        + whale ($0.008)
 ```
 
-Per tick cost: roughly $0.014 USDC. Both routines are individually budget-capped via `max_spend_usd` in their `Config`; if AgentPay would exceed the cap the routine returns a graceful SKIP rather than partial data.
+Per routine cost: $0.008 USDC. Both routines are individually budget-capped via `max_spend_usd` in their `Config`; if AgentPay would exceed the cap the routine returns a graceful SKIP rather than partial data.
 
 ## Routines
 
