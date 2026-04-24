@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from telegram.ext import ContextTypes
 
-from agentpay import AgentWallet, Session, BudgetExceeded
+from agentpay import AgentWallet, Session, BudgetExceeded, PaymentFailed
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +77,8 @@ def _run_sync(config: Config, network: str, gateway: str, secret: str) -> str:
             signals = _gather(session, config.asset)
     except BudgetExceeded as e:
         return f"SKIP\nSignal budget exceeded: {e}"
+    except PaymentFailed as e:
+        return f"SKIP\nPayment failed: {e}"
     except Exception as e:
         log.exception("funding_carry: signal gathering failed")
         return f"ERROR\nSignal error: {e}"
